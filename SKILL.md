@@ -1,11 +1,11 @@
 ---
-name: color-scene-poster
+name: yoho-retro-poster
 description: "当用户要求按 1–3 个颜色生成场景、制作同系列方形无字风景插画海报时使用；直接生成一张 2048×2048 成品与可复现记录。适用于有参考海报或希望沿用本 Skill 视觉规范的创作；不用于排版文字海报、照片修图、标志设计或印刷出血文件。优先使用 OpenAI 官方图像接口，明确不可用时可用独立凭据切换第三方接口。"
 metadata:
-  version: "0.3.2"
+  version: "0.3.3"
 ---
 
-# 颜色场景海报
+# yoho-retro-poster
 
 ## 目标
 

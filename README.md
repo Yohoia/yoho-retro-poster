@@ -1,4 +1,4 @@
-# 颜色场景海报 Skill
+# yoho-retro-poster
 
 给出 1 个 `#RRGGBB` 主色，最多再给 2 个指定色，即可直接生成一张 2048×2048 方形无字风景插画。Agent 自行确定一个场景和构图，只发起一次图像请求。视觉方向来自 Skill 自带 `examples/` 中的 16 张海报样张：大块色面、简化地貌、宽阔留白、小比例建筑或人物、克制的细颗粒纹理。样张随 Skill 分发包一起提供，安装后可直接使用。
 
@@ -11,14 +11,14 @@
 或使用命令安装：
 
 ```sh
-npx skills add Yohoia/yoho-retro-poster --skill color-scene-poster
+npx skills add Yohoia/yoho-retro-poster --skill yoho-retro-poster
 ```
 
-仓库根目录就是 Skill 源码。手动安装时，将仓库克隆到宿主的 Skill 目录，并将目录命名为 `color-scene-poster`。安装后按下方说明配置依赖和凭据。
+仓库根目录就是 Skill 源码。手动安装时，将仓库克隆到宿主的 Skill 目录，并将目录命名为 `yoho-retro-poster`。安装后按下方说明配置依赖和凭据。
 
 ## 使用
 
-在支持 Skill 的 Agent 中加载此目录，然后说：“用 `#D98278` 生成一张山地风景海报。”地点、季节和额外颜色可选。Agent 直接交付一张 2048×2048 PNG 成品。
+在支持 Skill 的 Agent 中加载此目录，然后说：“使用 `$yoho-retro-poster`，用 `#D98278` 生成一张山地风景海报。”地点、季节和额外颜色可选。Agent 直接交付一张 2048×2048 PNG 成品。
 
 默认先检查 OpenAI 官方接口；官方凭据缺失或官方模型明确不可用时，才检查 `https://image.aicodeme.xyz/v1`。两边默认都用 `gpt-image-2`。模型名属于普通设置，可查看或分别修改：
 
@@ -29,6 +29,8 @@ python3 scripts/poster.py config set --thirdparty-final-model gpt-image-2
 ```
 
 普通设置存于当前用户的平台配置目录；可用 `COLOR_SCENE_POSTER_CONFIG` 指定另一个设置文件位置。不要在此文件中保存 API Key。修改模型前请核对它是否支持本流程的图像编辑与目标尺寸。
+
+Skill 更名后保留旧版配置目录、环境变量和系统凭据引用，已有模型设置与 API Key 无需重新配置。
 
 ## 首次配置 API Key
 
