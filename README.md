@@ -1,76 +1,170 @@
+<p align="center">
+  <img src="./assets/readme/hero.svg" alt="yoho-retro-poster：从一个颜色开始，生成一片风景" width="100%" />
+</p>
+
 # yoho-retro-poster
 
-给出 1 个 `#RRGGBB` 主色，最多再给 2 个指定色，即可直接生成一张 2048×2048 方形无字风景插画。Agent 自行确定一个场景和构图，只发起一次图像请求。视觉方向来自 Skill 自带 `examples/` 中的 16 张海报样张：大块色面、简化地貌、宽阔留白、小比例建筑或人物、克制的细颗粒纹理。样张随 Skill 分发包一起提供，安装后可直接使用。
+给 Agent 一个主色，生成一张 **2048×2048、方形无字的复古风景插画**。
 
-## 安装
+<p align="center">
+  <img src="./assets/readme/showcase.webp" alt="实际生成结果「静静的草坡」与三张内置风格样张：大块色面、层叠地貌、宽阔留白与小比例景物" width="100%" />
+</p>
 
-让 Agent 安装：
+**实际生成 · 静静的草坡**：主色 `#D98278`，macOS 上通过第三方 `gpt-image-2` 直接返回 2048×2048 PNG。展示板中的另外三张是内置风格样张，用来说明视觉方向。
 
-> 请帮我安装这个 Skill：https://github.com/Yohoia/yoho-retro-poster
+一个 `#RRGGBB` 主色即可开始，最多再给两个指定色；地点、季节、情绪和禁用元素均可选。Agent 自行确定一个场景和构图，默认只发起一次图像请求。
 
-或使用命令安装：
+## 从一个颜色开始
+
+### 1. 安装 Skill
+
+在支持 Skill 的 Agent 中安装：
 
 ```sh
 npx skills add Yohoia/yoho-retro-poster --skill yoho-retro-poster
 ```
 
-仓库根目录就是 Skill 源码。手动安装时，将仓库克隆到宿主的 Skill 目录，并将目录命名为 `yoho-retro-poster`。安装后按下方说明配置依赖和凭据。
+也可以直接告诉 Agent：
 
-## 使用
+> 请帮我安装这个 Skill：https://github.com/Yohoia/yoho-retro-poster
 
-在支持 Skill 的 Agent 中加载此目录，然后说：“使用 `$yoho-retro-poster`，用 `#D98278` 生成一张山地风景海报。”地点、季节和额外颜色可选。Agent 直接交付一张 2048×2048 PNG 成品。
+仓库根目录就是 Skill 源码。手动安装时，将仓库克隆到宿主的 Skill 目录，并将目录命名为 `yoho-retro-poster`。
 
-默认先检查 OpenAI 官方接口；官方凭据缺失或官方模型明确不可用时，才检查 `https://image.aicodeme.xyz/v1`。两边默认都用 `gpt-image-2`。模型名属于普通设置，可查看或分别修改：
+### 2. 首次配置
 
-```text
-python3 scripts/poster.py config show
-python3 scripts/poster.py config set --final-model gpt-image-2
-python3 scripts/poster.py config set --thirdparty-final-model gpt-image-2
-```
+需要 **Python 3.10+、Node.js 22.18+、本机浏览器和系统凭据服务**。在已安装的 Skill 目录运行：
 
-普通设置存于当前用户的平台配置目录；可用 `COLOR_SCENE_POSTER_CONFIG` 指定另一个设置文件位置。不要在此文件中保存 API Key。修改模型前请核对它是否支持本流程的图像编辑与目标尺寸。
-
-Skill 更名后保留旧版配置目录、环境变量和系统凭据引用，已有模型设置与 API Key 无需重新配置。
-
-## 首次配置 API Key
-
-需要 Python 3.10+、Node.js 22.18+、本机浏览器和可用的系统凭据服务。在 `scripts/credential-ui` 中安装锁定版本依赖，随后回到 Skill 目录检查服务：
-
-```text
+```sh
+cd scripts/credential-ui
 npm ci --ignore-scripts
 cd ../..
 python3 scripts/provider_route.py
 ```
 
-上面的 `cd ../..` 从 `scripts/credential-ui` 返回 Skill 目录。官方凭据缺失时，可运行 `node scripts/credential-setup.ts official` 配置官方 Key。若选路结果为 `setup_required`，运行它给出的 `node scripts/credential-setup.ts thirdparty`，打开本机链接，**由用户自己输入并保存**第三方 Key。两项凭据互不共用；已有运行时 `OPENAI_API_KEY` 或 `AICODEME_API_KEY` 可被对应服务复用。不要把密钥发给 Agent，也不要写入项目配置或 `.env`。保存后重跑选路命令。
+默认优先检查 OpenAI 官方接口。需要配置官方 Key 时运行：
 
-凭据页仅提供“检查连接”，查询当前服务的模型列表，不生图。保存或检查后输入框保持可用；若检查失败，可输入新密钥，点击“替换并保存”，再检查连接。检查只能确认凭据和模型列表，不能保证图像端点或所选尺寸可用。若接口无响应，流程暂停，不自动切换到第三方。
+```sh
+node scripts/credential-setup.ts official
+```
 
-第三方检查若返回 HTTP 401，请确认填入的是该服务个人中心创建的开发者 SK，再重新打开第三方凭据页替换；网页登录凭据不能用于图像 API。部分 macOS 独立 Python 安装缺少默认 CA 证书包，程序会在系统证书包可用时使用 `/etc/ssl/cert.pem`，仍保持 TLS 证书校验。
+若选路结果为 `setup_required`，按它给出的命令配置第三方 Key：
 
-macOS 使用当前用户的 Keychain；Windows 的 Credential Manager 和 Linux 的 Secret Service 已有适配，但尚未在这两个系统实机验证。无安全后端时流程停止，不会退回明文存储。已有值可留空保留，输入新值才替换；保存中断后先检查状态。
+```sh
+node scripts/credential-setup.ts thirdparty
+```
 
-## 生成与输出
+打开命令返回的本机链接，**由你自己输入并保存密钥**；不要把密钥发给 Agent，也不要写入项目配置或 `.env`。保存后重新运行 `python3 scripts/provider_route.py`，结果为 `selected` 后即可生成。
 
-Agent 创建 `version: 2` 的单场景 `plan.json`；格式见 [方案格式](references/plan-format.md)。也可以手动调用：
+### 3. 说出你的颜色
 
-```text
+> 使用 `$yoho-retro-poster`，用 `#D98278` 生成一张山地风景海报。
+
+Agent 会选取参考、规划场景，再交付一张 PNG。视觉方向来自随 Skill 分发的 **16 张内置样张**：大色块、简化地貌、层叠空间、宽阔留白与克制的纸面颗粒。用户提供参考图时优先使用用户图片，参考的是视觉语言，不复制原图场景。
+
+## 你会得到什么
+
+| 项目 | 结果 |
+| --- | --- |
+| 成品 | 一张 2048×2048 方形 PNG，无标题文字与海报边框 |
+| 方案 | 单场景 `plan.json`，记录颜色、构图和参考图 |
+| 生成记录 | 同名 JSON，保留 Prompt、模型、服务地址、参考图哈希和请求 ID（若接口提供） |
+| 重复运行 | 完整结果会跳过；方案或参考图改变时要求新建任务目录 |
+
+成品默认保存在方案旁的 `output/poster-<id>.png`。已有结果不会覆盖，参考图目录不会修改。
+
+[查看视觉规范](references/style.md) · [查看方案格式](references/plan-format.md) · [了解本机凭据组件](scripts/credential-ui/README.md)
+
+## 数据、费用与使用边界
+
+颜色、场景说明和选用的参考图会发送给选中的图像接口，生成可能产生服务费用。凭据值由本机包装器提供给业务进程，不进入 Agent 对话、生成记录或命令参数。
+
+当前已在 **macOS + 第三方 `gpt-image-2`** 上验证真实 2048×2048 生成并完成目视检查；官方接口及其他系统尚未完成真实生成验证。Windows Credential Manager 与 Linux Secret Service 已有适配，尚未实机验证。无可用安全后端时停止，不退回明文存储。
+
+<details>
+<summary>服务选择与模型设置</summary>
+
+官方接口为 `https://api.openai.com/v1`；只有官方凭据缺失、鉴权失败（HTTP 401/403），或模型列表明确不含所选模型时，才检查 `https://image.aicodeme.xyz/v1`。两边默认模型均为 `gpt-image-2`，凭据独立使用；若接口无响应，流程暂停，不自动切换服务。
+
+在 Skill 目录查看或修改模型：
+
+```sh
+python3 scripts/poster.py config show
+python3 scripts/poster.py config set --final-model gpt-image-2
+python3 scripts/poster.py config set --thirdparty-final-model gpt-image-2
+```
+
+修改前请确认模型支持本流程的图像编辑与目标尺寸。普通设置存于当前用户的平台配置目录，可用 `COLOR_SCENE_POSTER_CONFIG` 指定其他设置文件；其中不应保存 API Key。
+
+Skill 更名后保留旧版配置目录、环境变量和系统凭据引用，已有模型设置与 API Key 无需重新配置。
+
+</details>
+
+<details>
+<summary>密钥保存、连接检查与排查</summary>
+
+| 平台 | 系统凭据服务 | 实机验证 |
+| --- | --- | --- |
+| macOS | 当前用户的 Keychain | 已验证 |
+| Windows | Credential Manager | 尚未验证 |
+| Linux | Secret Service | 尚未验证 |
+
+官方与第三方凭据互不共用。已有运行时 `OPENAI_API_KEY` 或 `AICODEME_API_KEY` 可被对应服务复用，包装器只向业务进程提供所选服务的凭据。
+
+凭据页的“检查连接”只查询当前服务的模型列表，不生图，也不能保证图像端点或所选尺寸可用。保存或检查后仍可输入新密钥，点击“替换并保存”，再检查连接。已有值可留空保留；保存中断后先检查状态。
+
+第三方返回 HTTP 401 时，请使用该服务个人中心创建的**开发者 SK**，重新打开第三方凭据页替换；网页登录凭据不能用于图像 API。若返回尺寸与请求不符，先核对开发者密钥绑定的请求分组。
+
+部分 macOS 独立 Python 安装缺少默认 CA 证书包；程序会在系统证书包可用时使用 `/etc/ssl/cert.pem`，并继续校验 TLS 证书。
+
+本地输入页减少密钥误贴、误存的风险，但不能对同一用户下任意可执行程序提供强隔离。完整行为见[凭据组件说明](scripts/credential-ui/README.md)。
+
+</details>
+
+<details>
+<summary>手动生成、输出与放大导出</summary>
+
+按[方案格式](references/plan-format.md)创建 `version: 2` 的单场景 `plan.json`，在 Skill 目录运行：
+
+```sh
 python3 scripts/poster.py validate /path/to/plan.json
 node scripts/credential-ui/src/profile.ts run official -- python3 scripts/poster.py generate /path/to/plan.json --provider official
 ```
 
-这些命令以 Skill 目录为当前工作目录。选路结果是 `thirdparty` 时，把命令中的两处 `official` 均替换为 `thirdparty`。Agent 默认从 `examples/` 选 1–3 张作为风格参考，将其实际路径写入 `references`，生成时上传到所选服务；用户另提供样张时优先使用。手动方案可将 `references` 留空，使用文字视觉规范。成品保存为方案旁的 `output/poster-<id>.png`，附带同名非敏感 JSON 记录。已有完整结果会跳过，避免重复付费和覆盖。参考图目录不会被修改。
+选路结果是 `thirdparty` 时，将命令中的两处 `official` 均替换为 `thirdparty`。Agent 默认选取 1–3 张内置样张，并将实际路径写入 `references`；生成时会上传到所选服务。用户提供的参考图优先使用，手动方案也可将 `references` 留空，使用文字视觉规范。
 
-旧版 `preview`、`final --scene` 和计费 `self-test` 入口已移除；旧多场景方案按方案格式迁移到新目录。已有成品和旧测试记录保留，原有成品模型设置与系统凭据可以继续使用。
+程序检查 API 返回 PNG 的真实尺寸。已有图片和记录均完整且与当前方案一致时跳过；结果不完整、损坏或方案改变时停止，先人工检查。修改场景时使用新任务目录，保留旧图。
 
-需要 3508×3508 文件时，生成命令加 `--upscale-3508`，并安装 Pillow。它是从 2048×2048 插值放大的版本，文件名会标出 `upscaled`，不增加真实细节。印刷色彩模式、出血和纸张适配不属于本 Skill。
+需要 3508×3508 文件时，安装 Pillow 并在生成命令后加 `--upscale-3508`：
 
-## 数据与费用
+```sh
+python3 -m pip install Pillow
+```
 
-颜色、场景说明及选用的参考图会发送给选中的图像接口；默认只生成一张成品、发起一次请求，可能产生服务费用。凭据值只由本机凭据包装器提供给业务进程，不进入 Agent 对话、生成记录或命令参数。Prompt、所用模型、服务地址和请求 ID 会存入生成记录，便于复查。
+这是从 2048×2048 插值放大的版本，文件名标为 `upscaled`，不会增加真实细节。印刷色彩模式、出血和纸张适配不属于本 Skill。
 
-本地凭据输入页降低误贴和误存风险，不能对同一用户下任意可执行程序提供强隔离。macOS 上的第三方 `gpt-image-2` 已验证接口直接返回 2048×2048 成品并完成目视检查；当前单图入口的请求次数、固定尺寸和重复运行保护由回归测试覆盖。生成效果与服务端模型行为有关；官方接口及其他系统尚未完成真实生成验证。第三方若返回与请求不符的尺寸，先核对开发者密钥绑定的请求分组，不将其直接判定为模型不支持该尺寸。
+旧版 `preview`、`final --scene` 和计费 `self-test` 入口已移除。旧多场景方案请按[方案格式](references/plan-format.md)迁移至新任务目录；已有成品和旧测试记录保留。
 
-## 验证
+</details>
 
-在 Skill 目录运行 `python3 -m unittest discover -s tests -v`。凭据组件在 `scripts/credential-ui` 目录运行 `npm run check`、`npm run build`、`npm test` 和（当前 macOS）`npm run test:native`。正式生图需要用户自己的有效凭据与可用额度。
+<details>
+<summary>开发验证</summary>
+
+在 Skill 目录运行 Python 回归测试，覆盖单次请求、固定尺寸和重复运行保护：
+
+```sh
+python3 -m unittest discover -s tests -v
+```
+
+验证凭据组件：
+
+```sh
+cd scripts/credential-ui
+npm run check
+npm run build
+npm test
+npm run test:native
+```
+
+`test:native` 当前在 macOS 验证。正式生图需要你自己的有效凭据和可用额度，生成效果取决于服务端模型行为。
+
+</details>
