@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "id": "color-scene-poster",
+  "label": "图万物 API Key（image.aicodeme.xyz）",
+  "credential": "color-scene-poster/image-aicodeme-xyz/default",
+  "ui": {
+    "title": "配置图万物生图密钥",
+    "placeholder": "粘贴 image.aicodeme.xyz 的 API Key",
+    "saveLabel": "保存密钥"
+  }
+}

@@ -1,0 +1,40 @@
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Python dependencies and caches
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node dependencies and development caches
+node_modules/
+*.tsbuildinfo
+coverage/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+!.env.template
+*.pem
+*.key
+credentials.local.*
+settings.local.*
+
+# Generated images, packages, research, and review workspaces
+/output/
+/runs/
+/dist/
+/evals/
+/workspace/
+.firecrawl/
+*.skill
+*.log

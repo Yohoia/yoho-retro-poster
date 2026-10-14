@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "profiles": {
+    "default": [{"manifest": "default.json", "env": "OPENAI_API_KEY"}],
+    "official": [{"manifest": "default.json", "env": "OPENAI_API_KEY"}],
+    "thirdparty": [{"manifest": "thirdparty.json", "env": "AICODEME_API_KEY"}]
+  }
+}

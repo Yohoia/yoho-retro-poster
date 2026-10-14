@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "id": "color-scene-poster",
+  "label": "OpenAI API Key",
+  "credential": "color-scene-poster/openai/default",
+  "ui": {
+    "title": "配置海报生图密钥",
+    "placeholder": "粘贴你的 OpenAI API Key",
+    "saveLabel": "保存密钥"
+  }
+}
