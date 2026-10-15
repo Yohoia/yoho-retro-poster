@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadManifest, nativeBackend, object, PublicError } from './config.ts';
 import { validateFields } from './page.ts';
-import { parseBindings, prepareCommand } from './run.ts';
+import { parseBindings } from './run.ts';
 import { startServer } from './server.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -30,14 +30,22 @@ export async function loadProfile(name: string, directory = root): Promise<Bindi
 function bindingArgs(bindings: Binding[]) {
   return bindings.flatMap(b => ['--manifest', b.manifest, '--env', b.env]);
 }
+async function resolveCredential(binding: Binding, environment: NodeJS.ProcessEnv,
+  read: (ref: string) => Promise<string | undefined>) {
+  const manifest = await loadManifest(binding.manifest);
+  const fallback = environment[binding.env]?.trim();
+  let stored: string | undefined;
+  try { stored = (await read(manifest.credential))?.trim(); }
+  catch { if (!fallback) throw new PublicError('凭据读取未完成，请检查系统凭据服务。'); }
+  return { credential: manifest.credential, value: stored || fallback,
+    source: stored ? 'system-store' : 'environment' };
+}
 export async function profileStatus(bindings: Binding[], environment = process.env,
   read = async (ref: string) => (await nativeBackend(ref)).get()) {
   const fields = [];
   for (const b of bindings) {
-    const m = await loadManifest(b.manifest);
-    const fromEnv = Boolean(environment[b.env]?.trim());
-    const configured = fromEnv || Boolean(await read(m.credential));
-    fields.push({ credential: m.credential, configured, source: fromEnv ? 'environment' : 'system-store' });
+    const { credential, value, source } = await resolveCredential(b, environment, read);
+    fields.push({ credential, configured: Boolean(value), source });
   }
   return { configured: fields.every(f => f.configured), fields };
 }
@@ -55,10 +63,13 @@ export async function prepareProfile(bindings: Binding[], command: string[], env
       if (!selected.has(binding.env)) delete scoped[binding.env];
     }
   }
-  // 环境注入优先；本次只读取所选业务需要的凭据。
-  const missing = bindings.filter(b => !scoped[b.env]?.trim());
-  if (!missing.length) return { command: command[0], args: command.slice(1), env: scoped };
-  return prepareCommand([...bindingArgs(missing), '--', ...command], read, scoped);
+  // 用户在页面保存的新值优先；无系统值时才复用环境注入。
+  for (const binding of bindings) {
+    const { value } = await resolveCredential(binding, scoped, read);
+    if (!value) throw new PublicError('有凭据尚未配置，任务未启动。');
+    scoped[binding.env] = value;
+  }
+  return { command: command[0], args: command.slice(1), env: scoped };
 }
 async function main() {
   const [action, name, ...args] = process.argv.slice(2);

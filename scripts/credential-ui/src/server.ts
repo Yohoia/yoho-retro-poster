@@ -8,7 +8,8 @@ import { loadPage, validateFields, validatePageUI, type PageUI } from './page.ts
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 function equal(a: string, b: string) { const x = Buffer.from(a); const y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); }
-export async function startServer(options: { manifest?: Manifest; manifests?: Manifest[]; ui?: PageUI; backend?: CredentialBackend; backends?: CredentialBackend[]; port?: number; ttlMs?: number; onComplete?: (result: object) => void; onTest?: (kind: 'connection') => Promise<object> }) {
+export async function startServer(options: { manifest?: Manifest; manifests?: Manifest[]; ui?: PageUI; backend?: CredentialBackend; backends?: CredentialBackend[]; port?: number; ttlMs?: number; autoCheck?: boolean; onComplete?: (result: object) => void; onTest?: (kind: 'connection') => Promise<object> }) {
+  if (options.autoCheck && !options.onTest) throw new PublicError('自动验证需要连接检查程序。');
   if (options.manifest && options.manifests) throw new PublicError('不能同时指定单项与多项声明。');
   const fields = validateFields(options.manifests ?? (options.manifest ? [options.manifest] : []));
   const ui = validatePageUI(options.ui ?? {});
@@ -70,14 +71,15 @@ export async function startServer(options: { manifest?: Manifest; manifests?: Ma
         throw new PublicError('请从本地配置页面提交。', 403);
       if (url.pathname === '/api/session' && req.method === 'POST') {
         if (!equal(req.headers.authorization ?? '', `Bearer ${bootstrap}`)) throw new PublicError('入口已失效，请重新打开工具提供的链接。', 401);
-        res.setHeader('Set-Cookie', `${cookieName}=${session}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.ceil((options.ttlMs ?? 30 * 60_000) / 1000)}`);
+        const lifetime = options.ttlMs === 0 ? '' : `; Max-Age=${Math.ceil((options.ttlMs ?? 30 * 60_000) / 1000)}`;
+        res.setHeader('Set-Cookie', `${cookieName}=${session}; HttpOnly; SameSite=Strict; Path=/${lifetime}`);
         json(res, 200, { status: 'ready' }); return;
       }
       const cookies = (req.headers.cookie ?? '').split(';').map(c => c.trim());
       if (!cookies.some(c => equal(c, `${cookieName}=${session}`))) throw new PublicError('请重新打开工具提供的配置链接。', 401);
       if (url.pathname === '/api/meta' && req.method === 'GET') {
         const metadata = await Promise.all(fields.map(async (field, index) => ({ ...field, ...await stores[index].status() })));
-        json(res, 200, { ...metadata[0], fields: metadata, page: ui, outcome, testAvailable: Boolean(options.onTest) }); return;
+        json(res, 200, { ...metadata[0], fields: metadata, page: ui, outcome, testAvailable: Boolean(options.onTest), autoCheck: Boolean(options.autoCheck) }); return;
       }
       if (url.pathname === '/api/test' && req.method === 'POST') {
         if (!options.onTest || !editable() || saving || testing) throw new PublicError('测试暂不可用。', 409);
@@ -132,10 +134,18 @@ export async function startServer(options: { manifest?: Manifest; manifests?: Ma
             }
             result = { ...identity, status: failed ? 'partial' : 'saved', results };
           }
+          if (result.status === 'saved' && options.autoCheck) {
+            testing = true;
+            let connection: object;
+            try { connection = await options.onTest!('connection'); }
+            catch { connection = { status: 'paused', message: '连接检查未完成，请检查服务后重新保存。' }; }
+            finally { testing = false; }
+            result = { ...result, status: object(connection) && connection.status === 'available' ? 'ready' : 'saved', connection };
+          }
           outcome = result.status;
           lastResult = result;
+          res.once('finish', () => options.onComplete?.(result));
           json(res, 200, result);
-          options.onComplete?.(result);
           if (outcome === 'saved' && !options.onTest) { completedTimer = setTimeout(close, 90_000); completedTimer.unref(); }
           return;
         } finally { saving = false; }
@@ -160,12 +170,12 @@ export async function startServer(options: { manifest?: Manifest; manifests?: Ma
   const addr = server.address();
   if (!addr || typeof addr === 'string') throw new Error('无法启动本机服务。');
   origin = `http://127.0.0.1:${addr.port}`;
-  const expiry = setTimeout(() => {
-    if (testing) { expiry.refresh(); return; }
+  const expiry = options.ttlMs === 0 ? undefined : setTimeout(() => {
+    if (testing || saving) { expiry?.refresh(); return; }
     if (['waiting', 'partial'].includes(outcome)) options.onComplete?.({ ...identity, status: 'expired', result: lastResult });
     close();
   }, options.ttlMs ?? 30 * 60_000);
-  expiry.unref();
+  expiry?.unref();
   function close() { clearTimeout(expiry); clearTimeout(completedTimer); server.close(); server.closeAllConnections(); }
   return { origin, url: `${origin}/#${bootstrap}`, bootstrap, close };
 }

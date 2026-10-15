@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, readFile, cp } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -40,12 +40,15 @@ test('真实分发配置：正式页面保存后可被对应业务环境读取�
   }
 });
 
-test('已有环境凭据无需读取系统库；缺失或后端失败时不启动业务', async () => {
+test('系统凭据优先；缺失时复用环境值，无可用来源时不启动业务', async () => {
   const bindings = await loadProfile('default');
   const env = Object.fromEntries(bindings.map(b => [b.env, 'TEST_ONLY_ENV']));
   const noRead = async () => { throw Error('TEST_ONLY_FAILURE'); };
   assert.equal((await profileStatus(bindings, env, noRead)).configured, true);
   assert.equal((await prepareProfile(bindings, ['business'], env, noRead)).env[bindings[0].env], 'TEST_ONLY_ENV');
+  const stored = await prepareProfile(bindings, ['business'], env, async () => 'TEST_ONLY_NEW_STORE');
+  assert.equal(stored.env[bindings[0].env], 'TEST_ONLY_NEW_STORE');
+  assert.equal((await profileStatus(bindings, env, async () => 'TEST_ONLY_NEW_STORE')).fields[0].source, 'system-store');
   await assert.rejects(prepareProfile(bindings, ['business'], {}, async () => undefined), /未配置/);
   await assert.rejects(prepareProfile(bindings, ['business'], {}, noRead), error => error instanceof Error && !error.message.includes('TEST_ONLY'));
 });
@@ -62,19 +65,26 @@ test('正式业务在环境已有密钥和系统库读取两条路径均只获�
       let reads = 0;
       const child = ['-e', `process.exit(process.env.${selected} && !process.env.${other} && process.env.KEEP === 'unchanged' ? 0 : 1)`];
       const plan = await prepareProfile(bindings, [process.execPath, ...child], environment, async () => {
-        reads++; return 'TEST_ONLY_SELECTED_STORE';
+        reads++; return fromStore ? 'TEST_ONLY_SELECTED_STORE' : undefined;
       });
       assert.equal(plan.env[other], undefined);
       assert.ok(plan.env[selected]);
-      assert.equal(reads, fromStore ? 1 : 0);
+      assert.equal(reads, 1);
+      assert.equal(plan.env[selected], fromStore ? 'TEST_ONLY_SELECTED_STORE' : environment[selected]);
       assert.deepEqual(environment, before);
       await new Promise<void>((resolve, reject) => execFile(plan.command, plan.args, { env: plan.env }, error => error ? reject(error) : resolve()));
     }
   }
 });
 
-test('真实 profile run CLI 不向业务子进程继承另一服务凭据', async () => {
-  const script = fileURLToPath(new URL('../src/profile.ts', import.meta.url));
+test('真实 profile run CLI 不向业务子进程继承另一服务凭据', async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'credential-cli-'));
+  t.after(() => rm(directory, {recursive:true,force:true}));
+  await cp(new URL('../src', import.meta.url), path.join(directory, 'src'), {recursive:true});
+  await cp(new URL('../manifests', import.meta.url), path.join(directory, 'manifests'), {recursive:true});
+  await writeFile(path.join(directory, 'package.json'), '{"type":"module"}');
+  // 隔离副本不安装原生适配器，仅验证环境备用路径，不读取用户的系统密钥。
+  const script = path.join(directory, 'src/profile.ts');
   for (const provider of ['official', 'thirdparty']) {
     const selected = provider === 'official' ? 'OPENAI_API_KEY' : 'AICODEME_API_KEY';
     const other = provider === 'official' ? 'AICODEME_API_KEY' : 'OPENAI_API_KEY';

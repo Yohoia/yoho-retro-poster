@@ -7,6 +7,7 @@ import argparse
 import base64
 import binascii
 import colorsys
+from contextlib import contextmanager
 import datetime as dt
 import hashlib
 import json
@@ -198,10 +199,13 @@ def png_size(data: bytes) -> tuple[int, int]:
 
 
 def validate_png(data: bytes) -> tuple[int, int]:
-    """Check dimensions, complete chunks and CRCs without an optional decoder."""
+    """Check chunks and bounded pixel-stream decompression using the standard library."""
     dimensions = png_size(data)
     offset = len(PNG)
-    has_pixels = False
+    pixels = bytearray()
+    header = None
+    palette_entries = 0
+    ended_pixels = False
     while offset < len(data):
         if offset + 12 > len(data):
             raise PosterError("PNG 数据不完整")
@@ -213,13 +217,55 @@ def validate_png(data: bytes) -> tuple[int, int]:
         expected_crc = struct.unpack(">I", data[end - 4:end])[0]
         if zlib.crc32(data[offset + 4:end - 4]) != expected_crc:
             raise PosterError("PNG 校验失败")
-        if kind == b"IHDR" and (offset != len(PNG) or length != 13):
-            raise PosterError("PNG 图像头无效")
-        if kind == b"IDAT" and length:
-            has_pixels = True
+        content = data[offset + 8:end - 4]
+        if kind == b"IHDR":
+            if offset != len(PNG) or length != 13:
+                raise PosterError("PNG 图像头无效")
+            header = struct.unpack(">IIBBBBB", content)
+        elif kind == b"PLTE":
+            if pixels or not length or length % 3 or length > 768:
+                raise PosterError("PNG 调色板无效")
+            palette_entries = length // 3
+        elif kind == b"IDAT":
+            if ended_pixels:
+                raise PosterError("PNG 像素数据顺序无效")
+            pixels.extend(content)
+        elif pixels:
+            ended_pixels = True
         if kind == b"IEND":
-            if length != 0 or not has_pixels or end != len(data):
+            if length != 0 or not pixels or end != len(data) or header is None:
                 raise PosterError("PNG 图像结束标记无效")
+            width, height, depth, color, compression, filtering, interlace = header
+            depths = {0: (1, 2, 4, 8, 16), 2: (8, 16), 3: (1, 2, 4, 8), 4: (8, 16), 6: (8, 16)}
+            if (not 0 < width <= 8192 or not 0 < height <= 8192 or depth not in depths.get(color, ())
+                    or compression != 0 or filtering != 0 or interlace not in (0, 1)
+                    or (color == 3 and not 0 < palette_entries <= 2 ** depth)):
+                raise PosterError("PNG 像素格式无效")
+            channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[color]
+            passes = [(0, 0, 1, 1)] if not interlace else [
+                (0, 0, 8, 8), (4, 0, 8, 8), (0, 4, 4, 8), (2, 0, 4, 4),
+                (0, 2, 2, 4), (1, 0, 2, 2), (0, 1, 1, 2)]
+            rows = []
+            for x, y, dx, dy in passes:
+                columns = max(0, (width - x + dx - 1) // dx)
+                count = max(0, (height - y + dy - 1) // dy)
+                if columns and count:
+                    rows.extend([1 + (columns * channels * depth + 7) // 8] * count)
+            expected = sum(rows)
+            if expected > 128 * 1024 * 1024:
+                raise PosterError("PNG 像素数据过大")
+            try:
+                decoder = zlib.decompressobj()
+                decoded = decoder.decompress(pixels, expected + 1)
+            except zlib.error as exc:
+                raise PosterError("PNG 像素数据无法解压") from exc
+            if len(decoded) != expected or not decoder.eof or decoder.unused_data or decoder.unconsumed_tail:
+                raise PosterError("PNG 像素数据长度无效")
+            row_offset = 0
+            for row_size in rows:
+                if decoded[row_offset] > 4:
+                    raise PosterError("PNG 扫描行过滤类型无效")
+                row_offset += row_size
             return dimensions
         offset = end
     raise PosterError("PNG 数据不完整")
@@ -339,12 +385,54 @@ def request_image(prompt: str, model: str, size: str, refs: list[Path], provider
 
 
 def write_new(path: Path, data: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
     try:
+        path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("xb") as stream:
             stream.write(data)
     except FileExistsError as exc:
         raise PosterError(f"输出已存在，未覆盖：{path}") from exc
+    except OSError as exc:
+        raise PosterError(f"输出保存失败，已保留此前结果，请先检查磁盘和权限：{path}") from exc
+
+
+@contextmanager
+def output_lock(out: Path, scene_id: str):
+    """Advisory locks release on process exit; keep the inode to avoid lock-file races."""
+    stream = None
+    locked = False
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=out) as probe:
+            probe.write(b"0")
+            probe.flush()
+            os.fsync(probe.fileno())
+        stream = (out / f".poster-{scene_id}.lock").open("a+b")
+        if os.name == "nt":
+            import msvcrt
+            if stream.seek(0, os.SEEK_END) == 0:
+                stream.write(b"0")
+                stream.flush()
+            stream.seek(0)
+            msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        locked = True
+    except OSError as exc:
+        if stream:
+            stream.close()
+        message = "同一输出任务正在运行，请等待完成后再试" if stream else "输出目录不可用，请检查路径、权限和磁盘空间"
+        raise PosterError(message) from exc
+    try:
+        yield
+    finally:
+        if locked and stream:
+            if os.name == "nt":
+                stream.seek(0)
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+            stream.close()
 
 
 def export_upscaled(source: Path, record: Path) -> None:
@@ -374,6 +462,11 @@ def export_upscaled(source: Path, record: Path) -> None:
 def render(plan_path: Path, out: Path, *, upscale: bool = False, provider: str = "official") -> None:
     plan = load_plan(plan_path)
     settings = read_settings()
+    with output_lock(out, plan["scene"]["id"]):
+        _render_locked(plan, out, settings, upscale=upscale, provider=provider)
+
+
+def _render_locked(plan: dict, out: Path, settings: dict, *, upscale: bool, provider: str) -> None:
     scene = plan["scene"]
     if provider not in PROVIDERS:
         raise PosterError(f"未知服务：{provider}")

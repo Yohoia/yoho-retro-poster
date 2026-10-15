@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadManifest, PublicError } from './credential-ui/src/config.ts';
+import { loadManifest, PublicError, type CredentialBackend } from './credential-ui/src/config.ts';
 import { loadProfile, prepareProfile } from './credential-ui/src/profile.ts';
 import { startServer } from './credential-ui/src/server.ts';
 
@@ -9,10 +9,12 @@ type Provider = 'official' | 'thirdparty';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const providerLabels: Record<Provider, string> = { official: 'OpenAI 官方', thirdparty: '图万物' };
 
-export async function testProvider(provider: Provider): Promise<object> {
+export async function testProvider(provider: Provider,
+  readCredential?: (ref: string) => Promise<string | undefined>): Promise<object> {
   const bindings = await loadProfile(provider);
   const python = process.env.PYTHON3 || 'python3';
-  const plan = await prepareProfile(bindings, [python, path.join(root, 'scripts', 'poster.py'), 'probe', provider]);
+  const plan = await prepareProfile(bindings, [python, path.join(root, 'scripts', 'poster.py'), 'probe', provider],
+    process.env, readCredential);
   // Only the selected provider receives its key, including when both keys exist in the parent environment.
   delete plan.env[provider === 'official' ? 'AICODEME_API_KEY' : 'OPENAI_API_KEY'];
   const result = await new Promise<{ stdout: string; stderr: string; error?: Error }>(resolve => {
@@ -41,18 +43,40 @@ export async function testProvider(provider: Provider): Promise<object> {
   return { status: 'paused', message: '测试结果不明确，已暂停。' };
 }
 
+export async function startCredentialSetup(selected: Provider, options: {
+  backend?: CredentialBackend; check?: () => Promise<object>;
+} = {}) {
+  const bindings = await loadProfile(selected);
+  const manifests = await Promise.all(bindings.map(binding => loadManifest(binding.manifest)));
+  type Completion = { status: 'selected' | 'cancelled'; provider: Provider };
+  let finish!: (result: Completion) => void;
+  const completed = new Promise<Completion>(resolve => { finish = resolve; });
+  const app = await startServer({ manifests, backend: options.backend, ttlMs: 0, autoCheck: true,
+    onTest: options.check ?? (() => testProvider(selected)),
+    onComplete: result => {
+      const status = (result as { status: string }).status;
+      if (status === 'ready') finish({ status: 'selected', provider: selected });
+      else if (status === 'cancelled') finish({ status: 'cancelled', provider: selected });
+    } });
+  return { ...app, completed, cancel: () => { finish({ status: 'cancelled', provider: selected }); app.close(); } };
+}
+
 async function main() {
   const provider = process.argv[2];
   if (!['official', 'thirdparty'].includes(provider) || process.argv.length !== 3)
     throw new PublicError('用法：node scripts/credential-setup.ts official|thirdparty');
   const selected = provider as Provider;
-  const bindings = await loadProfile(selected);
-  const manifests = await Promise.all(bindings.map(binding => loadManifest(binding.manifest)));
-  const app = await startServer({ manifests, ttlMs: 30 * 60_000,
-    onTest: () => testProvider(selected),
-    onComplete: result => process.stdout.write(JSON.stringify(result) + '\n') });
-  process.stdout.write(`${providerLabels[selected]}凭据页（30 分钟内有效）：\n${app.url}\n`);
-  process.once('SIGINT', app.close); process.once('SIGTERM', app.close);
+  const app = await startCredentialSetup(selected);
+  process.stdout.write(`${providerLabels[selected]}凭据页（保存后自动检查连接，成功后继续；未完成时持续等待）：\n${app.url}\n`);
+  process.once('SIGINT', app.cancel); process.once('SIGTERM', app.cancel);
+  try {
+    const result = await app.completed;
+    process.stdout.write(JSON.stringify(result) + '\n');
+    if (result.status !== 'selected') process.exitCode = 2;
+  } finally {
+    process.removeListener('SIGINT', app.cancel); process.removeListener('SIGTERM', app.cancel);
+    app.close();
+  }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url))

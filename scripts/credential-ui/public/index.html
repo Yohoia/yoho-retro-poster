@@ -19,15 +19,12 @@
       <label for="secret" class="visually-hidden">密钥</label>
       <input id="secret" name="secret" type="password" placeholder="粘贴 API Key" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="2500" required disabled aria-describedby="hint message" />
       </div>
-      <button id="save" type="submit" disabled>保存</button>
+      <button id="save" type="submit" disabled>保存密钥</button>
     </form>
     <p id="hint" class="hint">仅保存到本机系统凭据库</p>
     <p id="message" class="message" role="status" aria-live="polite" hidden></p>
     <section id="model-tests" class="model-tests" hidden aria-label="模型验证">
-      <p>保存后可检查连接。检查失败时，输入新密钥替换并保存后重试。</p>
-      <div class="test-actions">
-        <button id="test-connection" type="button" disabled>检查连接</button>
-      </div>
+      <p>保存后自动检查连接；通过后任务继续。检查失败时，请输入新密钥并重新保存。</p>
       <p id="test-result" class="message" role="status" aria-live="polite" hidden></p>
     </section>
   </main>

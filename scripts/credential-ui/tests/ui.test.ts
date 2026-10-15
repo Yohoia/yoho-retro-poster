@@ -18,35 +18,33 @@ class Element {
 }
 async function harness(configured = false, fail = false, connectionResult = { status: 'available', message: '测试成功' }, testAvailable = true) {
   const nodes = Object.fromEntries(['credential-form', 'fields', 'save', 'heading', 'context', 'hint', 'message',
-    'model-tests', 'test-connection', 'test-result'].map(key => [key, new Element()]));
+    'model-tests', 'test-result'].map(key => [key, new Element()]));
   const fields = [0, 1].map(index => ({ id: 'sample', label: index ? '<img src=x>' : '语音服务', credential: 'sample/' + index,
     configured: index === 0 && configured, revision: 'revision-' + index, storage: '测试凭据库', ui: { placeholder: '测试输入' } }));
-  const metadata = { fields, page: { title: '连接服务', label: '两个服务', saveLabel: '确认保存' }, outcome: 'waiting', testAvailable };
+  const metadata = { fields, page: { title: '连接服务', label: '两个服务', saveLabel: '确认保存' }, outcome: 'waiting', testAvailable, autoCheck:testAvailable };
   const submitted: any[] = [];
-  const tests: any[] = [];
   const lifecycle: Record<string, () => void> = {};
   const context = { document: { getElementById: (id: string) => nodes[id], createElement: () => new Element(), title: '' },
     location: { hash: '', pathname: '/' }, history: { replaceState() {} }, AbortSignal,
     window: { addEventListener: (key: string, callback: () => void) => { lifecycle[key] = callback; } },
     fetch: async (url: string, options: any) => {
       if (url === '/api/meta') return { ok: true, json: async () => structuredClone(metadata) };
-      if (url === '/api/test') { tests.push(JSON.parse(options.body));
-        return { ok: true, json: async () => connectionResult }; }
       assert.equal(url, '/api/save'); submitted.push(JSON.parse(options.body));
       if (fail) {
         metadata.fields[0].configured = true; metadata.outcome = 'partial';
         return { ok: true, json: async () => ({ status: 'partial', results: [{ credential: 'sample/0', status: 'saved' }, { credential: 'sample/1', status: 'failed' }] }) };
       }
-      metadata.outcome = 'saved'; metadata.fields.forEach(field => { field.configured = true; });
-      return { ok: true, json: async () => ({ status: 'saved' }) };
+      metadata.outcome = testAvailable && connectionResult.status === 'available' ? 'ready' : 'saved';
+      metadata.fields.forEach(field => { field.configured = true; });
+      return { ok: true, json: async () => ({ status:metadata.outcome, connection:testAvailable ? connectionResult : undefined }) };
     } };
   runInNewContext(await readFile(new URL('../public/app.js', import.meta.url), 'utf8'), context);
   await new Promise(resolve => setImmediate(resolve));
   const inputs = () => nodes.fields.children.map(field => field.children[1]);
   const input = () => nodes['credential-form'].listeners.input({});
   const submit = () => nodes['credential-form'].listeners.submit({ preventDefault() {} });
-  const click = (id: string) => nodes[id].listeners.click({});
-  return { nodes, inputs, input, submit, submitted, lifecycle, click, tests };
+  return { nodes, inputs, input, submit, submitted, lifecycle,
+    setConnection:(result:typeof connectionResult)=>{connectionResult=result;} };
 }
 test('真实前端产物：配置生成两个密码框、纯文本标签、必填与成功清空', async () => {
   const h = await harness(false, false, undefined, false);
@@ -74,28 +72,27 @@ test('真实前端产物：部分失败不显示全部保存，刷新状态并�
   assert.equal(h.inputs()[1].required, true); assert.equal(h.nodes.save.disabled, true);
   h.inputs()[1].value = 'FAKE_RETRY'; h.input(); assert.equal(h.nodes.save.disabled, false);
 });
-test('真实前端产物：连接失败后密码框仍可见，可替换保存并再次检查', async () => {
+test('真实前端产物：保存自动验证，失败可替换，通过后显示继续且不再请求已关闭服务', async () => {
   const h = await harness(false, false, { status: 'unavailable', message: 'HTTP 401，请替换开发者 SK' });
-  assert.equal(h.nodes['test-connection'].disabled, true);
+  await h.submit(); assert.equal(h.submitted.length,0);
   h.inputs().forEach(input => { input.value = 'FAKE_ONLY'; }); h.input(); await h.submit();
-  assert.equal(h.nodes['test-connection'].disabled, false);
-  await h.click('test-connection');
-  assert.deepEqual(h.tests[0], { kind: 'connection' });
   assert.match(h.nodes['test-result'].textContent, /HTTP 401/);
   assert.equal(h.nodes['credential-form'].hidden, false);
   assert.ok(h.inputs().every(input => !input.disabled && !input.value));
   h.inputs()[0].value = 'FAKE_REPLACEMENT'; h.input();
   assert.equal(h.nodes.save.disabled, false);
   assert.equal(h.nodes.save.textContent, '替换并保存');
-  assert.equal(h.nodes['test-connection'].disabled, true);
+  h.setConnection({status:'available',message:'连接成功'});
   await h.submit();
   assert.deepEqual(h.submitted[1].entries, [{ credential: 'sample/0', value: 'FAKE_REPLACEMENT', revision: 'revision-0', replaceExisting: true }]);
-  assert.equal(h.nodes['credential-form'].hidden, false);
-  assert.ok(h.inputs().every(input => !input.disabled && !input.value));
-  await h.click('test-connection'); assert.equal(h.tests.length, 2);
+  assert.equal(h.nodes['credential-form'].hidden, true);
+  assert.equal(h.nodes['model-tests'].hidden, true);
+  assert.ok(h.inputs().every(input => input.disabled && !input.value));
+  assert.match(h.nodes.message.textContent,/任务正在继续/);
 });
-test('正式 HTML 只保留检查连接按钮', async () => {
+test('正式 HTML 只有保存密钥按钮', async () => {
   const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
-  assert.match(html, /id="test-connection"/);
-  assert.doesNotMatch(html, /test-generation|测试生图/);
+  assert.equal((html.match(/<button\b/g)??[]).length,1);
+  assert.match(html, /id="save"/);
+  assert.doesNotMatch(html, /test-generation|test-connection|测试生图/);
 });

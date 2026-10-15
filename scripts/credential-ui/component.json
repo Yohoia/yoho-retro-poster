@@ -1,29 +1,29 @@
 {
   "version": 1,
   "files": {
-    "README.md": "79a1c008e24e22a98be04b1861196409a3fece9fbefbaa516573ff36bd28d809",
+    "README.md": "b6e433c4cf820bf0bd141c0f5210b80adb7faafcbd607f41729ffcf0408e52e2",
     "package-lock.json": "0b457e658ad62b3d699d4aa3b0a504ae03e9f879a9d0a8d8d4e15d0db1a3845c",
     "package.json": "82c1b1b85ee7f5ce2be69d2f389167de6a7f3bfb47ef210a83c4dd4ec51d720d",
-    "public/app.js": "187292035bdfc5c8946e962051e75a35120e37cd99d276a543b9e619503e640f",
+    "public/app.js": "9342d550b708285f475a0dd746d97f1aa9daa94f235d4020c1767e93dc045c04",
     "public/favicon.svg": "574d5efbf305158c498636fbc81ecd27756b7cb7ff77ad73b4051fcf07d8fe42",
-    "public/index.html": "9aa690c4df4e63ff4e8e806a7b8a3ff3a4885c01a2651585995cc54852310128",
+    "public/index.html": "ea1404931508061cb1691dadda90fe412a52ca146f51bc2d94779da07f91896d",
     "public/style.css": "d6a719fb08bfcf664f1e909e9d6d7195de251789729cf9b7a36edea572bf0e19",
     "src/cli.ts": "a29c42750d81061f4721ce44ac3684d17d66fec791db155452234116c8988f34",
     "src/config.ts": "6d84f58c7859b49d291429819a4cd8b73051720ec420b34fcfb86538ed1cb687",
     "src/page.ts": "fbad1e2a9b1b2157444a715f55257f9992fea9b8dd8a9d3af15ef9545775f7f8",
-    "src/profile.ts": "c3126e3ce4a78bcb8db7732908136f5ebabaee3df227c8ae7eb3c2830677d91b",
+    "src/profile.ts": "391cbe2a4f7610cd8b8bb829b45e44f4308692b6906f9dec071cdb94aeb67477",
     "src/run.ts": "fe6b0ed145b6737ed472c929bb0e7f6c77721a0e4dfa9b6d785c3f09a2c5c028",
-    "src/server.ts": "a3ebd1814cfbeceb6037c6be9bff3802197dfc7e3a95e1295e246ac5926ef11b",
+    "src/server.ts": "0b23d4a1389e602c3447fbb95b08bb9fc08dc6d6b1c994383346ad2e8bbe82b4",
     "tests/configure.test.ts": "3f360ed0102c944b7a502d783eea3c63016fdcaa3c230a1a6ec0865eb513cbd6",
     "tests/credentials.test.ts": "a581bcfd28268b6b2f36414d06ca13f063df75bd6ecea7a071234157c4f5bb77",
     "tests/multi-key.test.ts": "1879363e3718e8c538f01dcb180f78cbaa9b4a672e759068ec10b1188c1be654",
     "tests/native-smoke.ts": "d0a7ed2dd1ce7135a2a63bb8cfb779c24ccba19290cbabefaa280598866e0990",
     "tests/page.test.ts": "85772cc4b949443ff80d090bc1fc2fbc77f30ec4d8c26e40aa6530dd4270417a",
-    "tests/profile.test.ts": "53b2debdbc453bf567200f94026358b7efbd65b9d1b5306f932031e1303d9d90",
+    "tests/profile.test.ts": "11fd53ec212e52ba36e85c28558845162b4c7861131815ceede00376e67a1d8e",
     "tests/run.test.ts": "157f946c795d5f5b0a4c049201818bf0f646305050324d14f0913e751df1ca45",
-    "tests/ui.test.ts": "5f98fe528706cd9b2e9cc9e21ead79e1b2da1a62085a874934d7bfd3a8fe7a5d",
+    "tests/ui.test.ts": "3b3ae4a6118f1eb86ae7f606b2cf670d679590cf2390b2d133bf24e7270c9b41",
     "tsconfig.json": "f7deff7c92358b9f9dd7e086d864471744332d33f748fe29e6be7a88ade4704d",
     "tsconfig.web.json": "7ced73bff9909988639b0369bbd4bfbb756d8570f75ac711a02b29a6e42d88e7",
-    "web/app.ts": "6ef12ee97335d34d73d2efed2359fddb61701947384b5dac216d8246bb2ce22f"
+    "web/app.ts": "35e36f626bbd7188d88ae4ca63a12201e53569a571498bb96d1df04e432cc49e"
   }
 }

@@ -5,6 +5,8 @@ import json
 import os
 from pathlib import Path
 import struct
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -169,7 +171,68 @@ class PosterTest(unittest.TestCase):
             with self.assertRaisesRegex(poster.PosterError, "1254×1254.*2048x2048"):
                 poster.render(plan, self.root / "out", upscale=False)
         opened.assert_called_once()
-        self.assertFalse(list((self.root / "out").glob("*")))
+        self.assertFalse(list((self.root / "out").glob("*.png")))
+        self.assertFalse(list((self.root / "out").glob("*.json")))
+
+    def test_unusable_output_stops_cli_before_any_image_request(self):
+        plan = self.write_plan()
+        blocked = self.root / "not-a-directory"
+        blocked.write_text("keep this file")
+        with mock.patch.object(poster.sys, "argv", ["poster.py", "generate", str(plan), "--output-dir", str(blocked)]), \
+             mock.patch.object(poster, "request_image") as request, \
+             mock.patch("sys.stderr", new_callable=io.StringIO) as error:
+            self.assertEqual(poster.main(), 2)
+        request.assert_not_called()
+        self.assertIn("输出目录不可用", error.getvalue())
+        self.assertEqual(blocked.read_text(), "keep this file")
+
+    def test_other_process_blocks_duplicate_request_and_exit_releases_lock(self):
+        plan = self.write_plan()
+        out = self.root / "out"
+        script = (
+            "import importlib.util, pathlib, sys\n"
+            f"spec=importlib.util.spec_from_file_location('poster', {str(ROOT / 'scripts/poster.py')!r})\n"
+            "p=importlib.util.module_from_spec(spec); spec.loader.exec_module(p)\n"
+            f"with p.output_lock(pathlib.Path({str(out)!r}), 'quiet-meadow'):\n"
+            " print('locked', flush=True)\n sys.stdin.readline()\n"
+        )
+        child = subprocess.Popen([sys.executable, "-u", "-c", script], stdin=subprocess.PIPE,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            self.assertEqual(child.stdout.readline().strip(), "locked")
+            with mock.patch.object(poster, "request_image") as request:
+                with self.assertRaisesRegex(poster.PosterError, "正在运行"):
+                    poster.render(plan, out)
+                request.assert_not_called()
+        finally:
+            child.terminate()
+            child.communicate(timeout=5)
+        with mock.patch.object(poster, "request_image", return_value=(fake_png(2048, 2048), None)) as request:
+            poster.render(plan, out)
+            poster.render(plan, out)
+            request.assert_called_once()
+
+    def test_png_with_valid_crcs_but_invalid_pixels_is_not_saved_or_resumed(self):
+        def chunk(kind, content):
+            return struct.pack(">I", len(content)) + kind + content + struct.pack(">I", zlib.crc32(kind + content))
+        header = chunk(b"IHDR", struct.pack(">IIBBBBB", 2048, 2048, 8, 2, 0, 0, 0))
+        plan = self.write_plan()
+        bad_streams = [b"not-a-zlib-stream", zlib.compress(b"too few scanlines"),
+                       zlib.compress((b"\x05" + b"\0" * (2048 * 3)) * 2048)]
+        for index, pixels in enumerate(bad_streams):
+            damaged = poster.PNG + header + chunk(b"IDAT", pixels) + chunk(b"IEND", b"")
+            with self.subTest(index=index), mock.patch.object(poster, "safe_open", return_value=FakeResponse(damaged)):
+                with self.assertRaisesRegex(poster.PosterError, "PNG"):
+                    poster.render(plan, self.root / f"invalid-{index}")
+                self.assertFalse(list((self.root / f"invalid-{index}").glob("*.png")))
+        out = self.root / "out"
+        with mock.patch.object(poster, "request_image", return_value=(fake_png(2048, 2048), None)):
+            poster.render(plan, out)
+        (out / "poster-quiet-meadow.png").write_bytes(damaged)
+        with mock.patch.object(poster, "request_image") as request:
+            with self.assertRaisesRegex(poster.PosterError, "已有图片.*人工检查"):
+                poster.render(plan, out)
+            request.assert_not_called()
 
     def test_probe_uses_only_final_model_with_legacy_preview_settings(self):
         self.config.write_text(json.dumps({"final_model": "gpt-image-2", "preview_model": "unavailable-preview"}))

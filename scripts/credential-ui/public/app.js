@@ -30,7 +30,7 @@ function done() {
     form.hidden = !meta.testAvailable;
     get('hint').hidden = !meta.testAvailable;
     if (meta.testAvailable)
-        message('已保存。可以检查连接，或输入新密钥替换后重试。');
+        message('密钥已保存。连接未通过时，请输入新密钥并重新保存。');
     else {
         get('heading').textContent = '已保存';
         message('可以关闭此页，回到对话继续。');
@@ -39,12 +39,9 @@ function done() {
 }
 function updateTests() {
     const section = get('model-tests');
-    section.hidden = !meta?.testAvailable;
+    section.hidden = !meta?.testAvailable || meta.outcome === 'ready';
     if (section.hidden)
         return;
-    const configured = meta.fields.every(field => field.configured);
-    const hasUnsaved = inputs.some(input => input.value.trim());
-    get('test-connection').disabled = busy || !editable() || !configured || hasUnsaved;
 }
 function update() {
     inputs.forEach(input => { input.disabled = busy || !editable(); });
@@ -106,29 +103,6 @@ function render() {
         message('本次配置已结束，请重新打开入口。');
 }
 form.addEventListener('input', () => { update(); get('message').hidden = true; });
-async function runTest() {
-    if (busy || !meta?.testAvailable || !editable() || !meta.fields.every(field => field.configured)
-        || inputs.some(input => input.value.trim()))
-        return;
-    busy = true;
-    update();
-    const resultNode = get('test-result');
-    resultNode.hidden = false;
-    resultNode.textContent = '正在检查模型列表…';
-    try {
-        const result = await request('/api/test', { method: 'POST', body: JSON.stringify({ kind: 'connection' }) }, 50_000);
-        resultNode.textContent = result.message ?? (result.status === 'available'
-            ? '测试通过。' : ('测试未通过：' + (result.reason ?? result.status)));
-    }
-    catch (error) {
-        resultNode.textContent = error instanceof Error ? error.message : '测试未完成。';
-    }
-    finally {
-        busy = false;
-        update();
-    }
-}
-get('test-connection').addEventListener('click', () => runTest());
 form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (busy || button.disabled)
@@ -136,16 +110,31 @@ form.addEventListener('submit', async (event) => {
     busy = true;
     update();
     inputs.forEach(input => { input.disabled = true; });
-    button.textContent = '正在保存…';
+    button.textContent = meta.autoCheck ? '正在保存并检查连接…' : '正在保存…';
     try {
         const entries = inputs.flatMap((input, index) => input.value.trim() ? [{ credential: meta.fields[index].credential,
                 value: input.value, revision: meta.fields[index].revision, replaceExisting: meta.fields[index].configured }] : []);
         get('test-result').hidden = true;
-        const result = await request('/api/save', { method: 'POST', body: JSON.stringify({ entries }) });
-        if (result.status === 'saved') {
+        const result = await request('/api/save', { method: 'POST', body: JSON.stringify({ entries }) }, 60_000);
+        if (result.status === 'ready') {
+            meta.outcome = 'ready';
+            clearInputs();
+            form.hidden = true;
+            get('hint').hidden = true;
+            get('model-tests').hidden = true;
+            get('heading').textContent = '连接成功';
+            document.title = '连接成功';
+            message('密钥已保存且连接检查通过，任务正在继续。可以关闭此页。');
+        }
+        else if (result.status === 'saved') {
             clearInputs();
             meta = await request('/api/meta');
             render();
+            if (result.connection) {
+                get('test-result').hidden = false;
+                get('test-result').textContent = result.connection.message ?? '当前密钥或模型不可用，请替换后重新保存。';
+                message('任务仍在等待。请检查错误，输入新密钥并保存后自动重试。');
+            }
         }
         else {
             clearInputs();
