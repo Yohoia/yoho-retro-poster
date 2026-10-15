@@ -119,19 +119,37 @@ class PosterTest(unittest.TestCase):
         changed = sample_plan()
         changed["scene"]["description"] = "A different landscape"
         plan.write_text(json.dumps(changed), encoding="utf-8")
-        with self.assertRaisesRegex(poster.PosterError, "新建任务目录"):
+        with self.assertRaisesRegex(poster.PosterError, "更换场景 id.*--output-dir"):
             poster.render(plan, self.root / "out", upscale=False)
 
     def test_cli_generate_calls_api_once_without_preview(self):
         plan = self.write_plan()
+        workspace = self.root / "user-workspace"
+        workspace.mkdir()
         with mock.patch.object(poster.sys, "argv", ["poster.py", "generate", str(plan)]), \
+             mock.patch.object(poster.Path, "cwd", return_value=workspace), \
              mock.patch.object(poster, "safe_open", return_value=FakeResponse(fake_png(2048, 2048))) as opened, \
              mock.patch("sys.stdout", new_callable=io.StringIO):
             self.assertEqual(poster.main(), 0)
             self.assertEqual(poster.main(), 0)
         opened.assert_called_once()
         self.assertEqual(json.loads(opened.call_args.args[0].data)["size"], "2048x2048")
-        self.assertEqual(len(list((self.root / "output").glob("*.png"))), 1)
+        self.assertEqual(len(list((workspace / "output").glob("*.png"))), 1)
+        self.assertTrue((workspace / "output/poster-quiet-meadow.json").is_file())
+        self.assertFalse((plan.parent / "output").exists())
+
+    def test_cli_explicit_output_overrides_workspace_default(self):
+        plan = self.write_plan()
+        workspace = self.root / "user-workspace"
+        workspace.mkdir()
+        custom = self.root / "chosen-output"
+        with mock.patch.object(poster.sys, "argv", ["poster.py", "generate", str(plan), "--output-dir", str(custom)]), \
+             mock.patch.object(poster.Path, "cwd", return_value=workspace), \
+             mock.patch.object(poster, "safe_open", return_value=FakeResponse(fake_png(2048, 2048))) as opened:
+            self.assertEqual(poster.main(), 0)
+        opened.assert_called_once()
+        self.assertTrue((custom / "poster-quiet-meadow.png").is_file())
+        self.assertFalse((workspace / "output").exists())
 
     def test_resume_rejects_corrupt_or_wrong_size_images_without_request_or_overwrite(self):
         plan = self.write_plan()

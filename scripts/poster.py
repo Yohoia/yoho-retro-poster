@@ -492,7 +492,7 @@ def _render_locked(plan: dict, out: Path, settings: dict, *, upscale: bool, prov
         except (OSError, ValueError) as exc:
             raise PosterError(f"已有结果记录不可读：{metadata}") from exc
         if any(recorded.get(key) != value for key, value in expected.items()):
-            raise PosterError(f"方案、模型或参考图已改变，请新建任务目录：{stem}")
+            raise PosterError(f"方案、模型或参考图已改变，请更换场景 id 或指定新的 --output-dir，保留旧结果：{stem}")
         try:
             if validate_png(target.read_bytes()) != (2048, 2048):
                 raise PosterError("已有图片尺寸不符")
@@ -538,7 +538,7 @@ def main() -> int:
     validate.add_argument("plan", type=Path)
     cmd = commands.add_parser("generate", help="直接生成一张 2048×2048 成品")
     cmd.add_argument("plan", type=Path)
-    cmd.add_argument("--output-dir", type=Path)
+    cmd.add_argument("--output-dir", type=Path, help="输出目录，默认当前工作目录下的 output/")
     cmd.add_argument("--provider", choices=PROVIDERS, default="official")
     cmd.add_argument("--upscale-3508", action="store_true")
     args = parser.parse_args()
@@ -568,7 +568,7 @@ def main() -> int:
             print(json.dumps({"status": "valid", "scene": plan["scene"]["id"],
                               "palette": plan["_palette"], "references": len(plan["_resolved_refs"])}, ensure_ascii=False))
         else:
-            render(args.plan, args.output_dir or args.plan.parent / "output",
+            render(args.plan, args.output_dir or Path.cwd() / "output",
                    upscale=args.upscale_3508, provider=args.provider)
         return 0
     except PosterError as exc:

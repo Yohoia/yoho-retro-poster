@@ -32,7 +32,7 @@ npx skills add Yohoia/yoho-retro-poster --skill yoho-retro-poster
 
 ### 2. 首次配置
 
-需要 **Python 3.10+、Node.js 22.18+、本机浏览器和系统凭据服务**。在已安装的 Skill 目录运行：
+需要 **Python 3.10+、Node.js 22.18+**。通过本机页面保存密钥还需要浏览器和系统凭据服务；已有运行时密钥也可作为环境备用来源。下文命令以 macOS/Linux 为例，在已安装的 Skill 根目录运行：
 
 ```sh
 cd scripts/credential-ui
@@ -41,7 +41,16 @@ cd ../..
 python3 scripts/provider_route.py
 ```
 
-默认优先检查 OpenAI 官方接口。需要配置官方 Key 时运行：
+Windows 尚未实机验证。使用 PowerShell 时，先在 Skill 根目录选择 Python 3.10+ 的解释器，并将其完整路径提供给凭据检查程序：
+
+```powershell
+$env:PYTHON3 = py -3 -c "import sys; print(sys.executable)"
+& $env:PYTHON3 scripts/provider_route.py
+```
+
+后续直接运行 Python 时，用 `& $env:PYTHON3` 代替 `python3`；由 Node 包装器启动的命令中，用 `-- $env:PYTHON3 ...` 指定解释器。`PYTHON3` 只保存程序路径。凭据页读取该变量，不接受把 `py -3` 整串作为一个可执行文件名。
+
+默认优先检查 OpenAI 官方接口。选路已返回 `selected` 时可直接生成，无需再打开凭据页。需要配置官方 Key 时运行：
 
 ```sh
 node scripts/credential-setup.ts official
@@ -68,12 +77,12 @@ Agent 会选取参考、规划场景，再交付一张 PNG。视觉方向来自�
 | 项目 | 结果 |
 | --- | --- |
 | 成品 | 一张 2048×2048 方形 PNG，无标题文字与海报边框 |
-| 方案 | 单场景 `plan.json`，记录颜色、构图和参考图 |
+| 方案 | 单场景 `plan-<id>.json`，记录颜色、构图和参考图 |
 | 生成记录 | 同名 JSON，保留 Prompt、模型、服务地址、参考图哈希和请求 ID（若接口提供） |
-| 重复运行 | 完整结果会跳过；方案或参考图改变时要求新建任务目录 |
+| 重复运行 | 完整结果会跳过；方案或参考图改变时需更换场景 `id` 或指定其他输出目录 |
 | 并发保护 | 同一输出任务只允许一个进程生成；先检查输出目录再调用接口 |
 
-成品默认保存在方案旁的 `output/poster-<id>.png`。已有结果不会覆盖，参考图目录不会修改。
+成品默认保存在 **用户当前工作区根目录的 `output/` 文件夹**，没有该文件夹时自动创建。Agent 在这里保存 `plan-<id>.json` 方案、`poster-<id>.png` 图片和 `poster-<id>.json` 生成记录。生成时保持当前工作目录为用户工作区，Skill 安装在哪里、方案存在哪里都不会改变默认输出位置；`--output-dir <目录>` 可以显式覆盖图片和记录的位置。Agent 会在交付时提供实际绝对路径，已有结果不会覆盖，参考图目录不会修改。
 
 [查看视觉规范](references/style.md) · [查看方案格式](references/plan-format.md) · [了解本机凭据组件](scripts/credential-ui/README.md)
 
@@ -81,7 +90,7 @@ Agent 会选取参考、规划场景，再交付一张 PNG。视觉方向来自�
 
 颜色、场景说明和选用的参考图会发送给选中的图像接口，生成可能产生服务费用。凭据值由本机包装器提供给业务进程，不进入 Agent 对话、生成记录或命令参数。
 
-当前已在 **macOS + 第三方 `gpt-image-2`** 上验证真实 2048×2048 生成并完成目视检查；官方接口及其他系统尚未完成真实生成验证。Windows Credential Manager 与 Linux Secret Service 已有适配，尚未实机验证。无可用安全后端时停止，不退回明文存储。
+当前已在 **macOS + 第三方 `gpt-image-2`** 上验证真实 2048×2048 生成并完成目视检查；官方接口及其他系统尚未完成真实生成验证。Windows Credential Manager 与 Linux Secret Service 已有适配，尚未实机验证。系统凭据不可用且无对应环境密钥时停止；页面保存始终要求安全后端，不退回明文存储。
 
 <details>
 <summary>服务选择与模型设置</summary>
@@ -115,7 +124,7 @@ Skill 更名后保留旧版配置目录、环境变量和系统凭据引用，�
 
 凭据页在保存后自动查询当前服务的模型列表，不生图，也不能保证图像端点或所选尺寸可用。401、403、模型缺失或网络错误会显示在页面中，任务保持等待；输入新值并点击“替换并保存”即可重新验证。连接检查通过后才继续。等待入口不会在固定时限后退出，关闭浏览器也不会取消命令；需要停止时取消运行中的命令。保存中断后先检查状态。
 
-第三方返回 HTTP 401 时，请使用该服务个人中心创建的**开发者 SK**，重新打开第三方凭据页替换；网页登录凭据不能用于图像 API。若返回尺寸与请求不符，先核对开发者密钥绑定的请求分组。
+第三方返回 HTTP 401 时，请使用该服务个人中心创建的**开发者 SK**，优先在当前仍等待的凭据页输入新值并保存，页面会自动重新检查。只有原命令已结束或页面入口失效时，才重新运行第三方凭据配置命令。网页登录凭据不能用于图像 API。若返回尺寸与请求不符，先核对开发者密钥绑定的请求分组。
 
 部分 macOS 独立 Python 安装缺少默认 CA 证书包；程序会在系统证书包可用时使用 `/etc/ssl/cert.pem`，并继续校验 TLS 证书。
 
@@ -126,16 +135,16 @@ Skill 更名后保留旧版配置目录、环境变量和系统凭据引用，�
 <details>
 <summary>手动生成、输出与放大导出</summary>
 
-按[方案格式](references/plan-format.md)创建 `version: 2` 的单场景 `plan.json`，在 Skill 目录运行：
+按[方案格式](references/plan-format.md)创建 `version: 2` 的单场景方案。下列 macOS/Linux 示例使用 Skill 的绝对路径；请把占位路径替换为实际位置，**在用户当前工作区根目录执行**，不用切换到 Skill 安装目录：
 
 ```sh
-python3 scripts/poster.py validate /path/to/plan.json
-node scripts/credential-ui/src/profile.ts run official -- python3 scripts/poster.py generate /path/to/plan.json --provider official
+python3 "/path/to/yoho-retro-poster/scripts/poster.py" validate ./output/plan-open-water.json
+node "/path/to/yoho-retro-poster/scripts/credential-ui/src/profile.ts" run official -- python3 "/path/to/yoho-retro-poster/scripts/poster.py" generate ./output/plan-open-water.json --provider official
 ```
 
 选路结果是 `thirdparty` 时，将命令中的两处 `official` 均替换为 `thirdparty`。Agent 默认选取 1–3 张内置样张，并将实际路径写入 `references`；生成时会上传到所选服务。用户提供的参考图优先使用，手动方案也可将 `references` 留空，使用文字视觉规范。
 
-程序检查 API 返回 PNG 的真实尺寸、数据块校验和、像素流解压与扫描行结构。已有图片和记录均完整且与当前方案一致时跳过；结果不完整、损坏或方案改变时停止，先人工检查。输出目录中的隐藏 `.poster-<id>.lock` 文件用于进程互斥，进程退出后锁自动释放，文件可以保留。修改场景时使用新任务目录，保留旧图。
+程序检查 API 返回 PNG 的真实尺寸、数据块校验和、像素流解压与扫描行结构。已有图片和记录均完整且与当前方案一致时跳过；结果不完整、损坏或方案改变时停止，先人工检查。输出目录中的隐藏 `.poster-<id>.lock` 文件用于进程互斥，进程退出后锁自动释放，文件可以保留。修改场景时保存新方案并使用新的场景 `id`，或显式指定新的输出目录，保留旧图。
 
 需要 3508×3508 文件时，安装 Pillow 并在生成命令后加 `--upscale-3508`：
 
@@ -145,20 +154,20 @@ python3 -m pip install Pillow
 
 这是从 2048×2048 插值放大的版本，文件名标为 `upscaled`，不会增加真实细节。印刷色彩模式、出血和纸张适配不属于本 Skill。
 
-旧版 `preview`、`final --scene` 和计费 `self-test` 入口已移除。旧多场景方案请按[方案格式](references/plan-format.md)迁移至新任务目录；已有成品和旧测试记录保留。
+旧版 `preview`、`final --scene` 和计费 `self-test` 入口已移除。旧多场景方案请按[方案格式](references/plan-format.md)另存为新版单场景方案，并为新生成选择未占用的场景 `id`；已有成品和旧测试记录保留。
 
 </details>
 
 <details>
 <summary>开发验证</summary>
 
-在 Skill 目录运行 Python 回归测试，覆盖单次请求、固定尺寸和重复运行保护：
+在 Skill 目录运行 Python 回归测试，覆盖工作区默认输出与显式目录覆盖、单次请求、固定尺寸、重复运行、跨进程互斥与退出后释放锁、输出路径预检、损坏 PNG 拒绝和服务选路：
 
 ```sh
 python3 -m unittest discover -s tests -v
 ```
 
-验证凭据组件：
+验证凭据组件，覆盖保存恢复、服务隔离、系统密钥优先，以及“空输入等待 → 错误密钥继续等待 → 正确密钥自动放行”的流程：
 
 ```sh
 cd scripts/credential-ui
