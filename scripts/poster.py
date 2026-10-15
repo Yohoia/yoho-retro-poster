@@ -164,26 +164,30 @@ def make_prompt(plan: dict, scene: dict) -> str:
     p = plan["_palette"]
     accents = ", ".join(p["accents"]) if p["accents"] else "derive only restrained harmonizing accents"
     refs = (
-        "Attached images are style references only. Create an entirely new scene and composition; "
-        "do not reproduce their landmarks, layout, people or buildings. "
+        "Attached images guide shape simplification, color masses, negative space and optional print texture. "
+        "Use the new scene and composition below; reference subjects and settings are not required. "
         if plan["_resolved_refs"] else ""
     )
     return (
         "Create ONE finished square landscape illustration, never a collage or design sheet. "
         + refs
         + "Visual language: modern retro travel-poster illustration without typography; "
-        "large clean flat color masses, simplified organic mountain and land shapes, layered depth, "
-        "crisp painterly edges, restrained fine print grain, high legibility at thumbnail scale. "
-        "Use a small hut, person, path, waterfall or similar scale cue only if the scene needs one. "
+        "large clean flat color masses, simplified organic forms, clear spatial relationships, "
+        "controlled painterly edges and high legibility at thumbnail scale. "
+        "Let the supplied palette and scene-specific brief determine the setting, subjects, weather, "
+        "action, viewpoint and composition. Integrate chosen elements into one coherent scenic moment. "
+        "Use only the details needed for the visual focus and sense of space. "
         "Keep generous negative space; avoid photorealism, 3D, gradients as the main structure, "
         "heavy outlines, ornamental borders, captions, logos, lettering and watermarks. "
-        f"Dominant color {p['main']}; lighter plane {p['light']}; middle plane {p['midtone']}; "
-        f"deep shadow {p['shadow']}; user accents: {accents}. "
+        f"Dominant color {p['main']}; user accents: {accents}. "
+        f"Supporting tonal suggestions: light {p['light']}, midtone {p['midtone']}, shadow {p['shadow']}. "
+        "Adapt supporting tones to the scene and color placement below, preserving the supplied colors. "
         "The dominant color must be unmistakable across large image regions, not merely a tiny accent. "
-        f"Overall brief: {plan.get('brief') or 'a quiet evocative place'}. "
+        f"Overall brief: {plan.get('brief') or 'a cohesive scenic moment inspired by the supplied colors'}. "
         f"Scene: {scene['description']}. Composition: {scene['composition']}. "
         f"Color placement: {scene['palette_use']}. "
-        "Render a polished final with intentional shapes and subtle texture."
+        "Render a beautiful, complete landscape with intentional shapes and balanced negative space. "
+        "Fine paper grain or local print speckling is optional and subordinate to the clean shapes."
     )
 
 
