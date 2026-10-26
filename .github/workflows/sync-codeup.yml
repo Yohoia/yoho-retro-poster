@@ -18,20 +18,26 @@ jobs:
     env:
       SOURCE_REPOSITORY: ${{ github.repository }}
       SOURCE_TOKEN: ${{ github.token }}
-      CODEUP_USERNAME: ${{ vars.CODEUP_USERNAME }}
-      CODEUP_TOKEN: ${{ secrets.CODEUP_TOKEN }}
-      CODEUP_NAMESPACE: 69aa892db28d0aba0f5ed47e
+      CODEUP_SSH_URL: ${{ vars.CODEUP_SSH_URL }}
+      CODEUP_SSH_KEY_B64: ${{ secrets.CODEUP_SSH_KEY_B64 }}
       GIT_TERMINAL_PROMPT: "0"
     steps:
-      - name: Mirror branches and tags, then verify
+      - name: Mirror branches and tags over SSH, then verify
         shell: bash
         run: |
           set -euo pipefail
-          : "${CODEUP_USERNAME:?Set the CODEUP_USERNAME repository variable}"
-          : "${CODEUP_TOKEN:?Set the CODEUP_TOKEN Actions secret}"
+          : "${CODEUP_SSH_URL:?Set the CODEUP_SSH_URL repository variable}"
+          : "${CODEUP_SSH_KEY_B64:?Set the CODEUP_SSH_KEY_B64 Actions secret}"
+          [[ "$CODEUP_SSH_URL" == git@codeup.aliyun.com:69aa892db28d0aba0f5ed47e/*.git ]]
 
+          umask 077
           work_dir=$(mktemp -d)
           trap 'rm -rf -- "$work_dir"' EXIT
+          printf '%s' "$CODEUP_SSH_KEY_B64" | base64 --decode > "$work_dir/codeup_ed25519"
+          cat > "$work_dir/known_hosts" <<'HOSTS'
+          codeup.aliyun.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQD6WbValczSDKC4ktjRzDNC1qINDAViw/oGA8ud7qH5F9XFZ4QAWhZmFBsp+cppBIOM63exjc4O9vbzMrd7AUItXigymGfTqrGt5VykIiaNhjttxSwbZf3N9eDcAvX4gGm3fcm6D1ACvPxvxMsCwOpdz5tDHqDxGOLPAXN+FSAvjdcN4uMz0MXghGh9Q3zSpy8z1TLkAKT2QBnr4q2tsdZKwWON8bBHIPwP3RSAdSUL6bAyotyncMDAvG53kwRKJ3wJ5ZezXqZNNV7EzHds+pvwThtuWtWsBuuRpL/oZiviWlXy6hILoWbkRfgONPwT0faaOn1GLzjHLuqHHfALGOen
+          HOSTS
+          export GIT_SSH_COMMAND="ssh -i \"$work_dir/codeup_ed25519\" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=\"$work_dir/known_hosts\" -o BatchMode=yes"
           export GIT_ASKPASS="$work_dir/askpass.sh"
           cat > "$GIT_ASKPASS" <<'ASKPASS'
           #!/usr/bin/env bash
@@ -39,8 +45,6 @@ jobs:
           case "$1" in
             *Username*github.com*) printf '%s\n' 'x-access-token' ;;
             *Password*github.com*) printf '%s\n' "$SOURCE_TOKEN" ;;
-            *Username*codeup.aliyun.com*) printf '%s\n' "$CODEUP_USERNAME" ;;
-            *Password*codeup.aliyun.com*) printf '%s\n' "$CODEUP_TOKEN" ;;
             *) exit 1 ;;
           esac
           ASKPASS
@@ -50,22 +54,20 @@ jobs:
           git -c credential.helper= clone --bare \
             "https://github.com/$SOURCE_REPOSITORY.git" "$work_dir/source.git"
           cd "$work_dir/source.git"
-          codeup_url="https://codeup.aliyun.com/$CODEUP_NAMESPACE/${SOURCE_REPOSITORY#*/}.git"
 
           # Codeup is a mirror: branch/tag updates and deletions follow GitHub.
-          git -c credential.helper= push --atomic --prune "$codeup_url" \
+          git push --atomic --prune "$CODEUP_SSH_URL" \
             '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'
 
           git for-each-ref --format='%(objectname) %(refname)' refs/heads refs/tags \
             | LC_ALL=C sort > "$work_dir/expected-refs"
-          git -c credential.helper= ls-remote --refs "$codeup_url" \
-            'refs/heads/*' 'refs/tags/*' \
+          git ls-remote --refs "$CODEUP_SSH_URL" 'refs/heads/*' 'refs/tags/*' \
             | awk '{print $1 " " $2}' | LC_ALL=C sort > "$work_dir/actual-refs"
           diff -u "$work_dir/expected-refs" "$work_dir/actual-refs"
 
           {
-            printf '### Codeup synchronization verified\n\n'
+            printf '### Codeup SSH synchronization verified\n\n'
             printf 'Source: `%s`\n\n' "$SOURCE_REPOSITORY"
-            printf 'Target: %s\n\n' "${codeup_url%.git}"
-            printf 'All branches and tags match GitHub.\n'
+            printf 'Target: `%s`\n\n' "$CODEUP_SSH_URL"
+            printf 'All branches and tags match the GitHub snapshot.\n'
           } >> "$GITHUB_STEP_SUMMARY"
