@@ -1,0 +1,71 @@
+name: Sync to Codeup
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeup-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SOURCE_REPOSITORY: ${{ github.repository }}
+      SOURCE_TOKEN: ${{ github.token }}
+      CODEUP_USERNAME: ${{ vars.CODEUP_USERNAME }}
+      CODEUP_TOKEN: ${{ secrets.CODEUP_TOKEN }}
+      CODEUP_NAMESPACE: 69aa892db28d0aba0f5ed47e
+      GIT_TERMINAL_PROMPT: "0"
+    steps:
+      - name: Mirror branches and tags, then verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${CODEUP_USERNAME:?Set the CODEUP_USERNAME repository variable}"
+          : "${CODEUP_TOKEN:?Set the CODEUP_TOKEN Actions secret}"
+
+          work_dir=$(mktemp -d)
+          trap 'rm -rf -- "$work_dir"' EXIT
+          export GIT_ASKPASS="$work_dir/askpass.sh"
+          cat > "$GIT_ASKPASS" <<'ASKPASS'
+          #!/usr/bin/env bash
+          set -eu
+          case "$1" in
+            *Username*github.com*) printf '%s\n' 'x-access-token' ;;
+            *Password*github.com*) printf '%s\n' "$SOURCE_TOKEN" ;;
+            *Username*codeup.aliyun.com*) printf '%s\n' "$CODEUP_USERNAME" ;;
+            *Password*codeup.aliyun.com*) printf '%s\n' "$CODEUP_TOKEN" ;;
+            *) exit 1 ;;
+          esac
+          ASKPASS
+          chmod 700 "$GIT_ASKPASS"
+
+          # Read the current GitHub state so queued runs cannot restore old refs.
+          git -c credential.helper= clone --bare \
+            "https://github.com/$SOURCE_REPOSITORY.git" "$work_dir/source.git"
+          cd "$work_dir/source.git"
+          codeup_url="https://codeup.aliyun.com/$CODEUP_NAMESPACE/${SOURCE_REPOSITORY#*/}.git"
+
+          # Codeup is a mirror: branch/tag updates and deletions follow GitHub.
+          git -c credential.helper= push --atomic --prune "$codeup_url" \
+            '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'
+
+          git for-each-ref --format='%(objectname) %(refname)' refs/heads refs/tags \
+            | LC_ALL=C sort > "$work_dir/expected-refs"
+          git -c credential.helper= ls-remote --refs "$codeup_url" \
+            'refs/heads/*' 'refs/tags/*' \
+            | awk '{print $1 " " $2}' | LC_ALL=C sort > "$work_dir/actual-refs"
+          diff -u "$work_dir/expected-refs" "$work_dir/actual-refs"
+
+          {
+            printf '### Codeup synchronization verified\n\n'
+            printf 'Source: `%s`\n\n' "$SOURCE_REPOSITORY"
+            printf 'Target: %s\n\n' "${codeup_url%.git}"
+            printf 'All branches and tags match GitHub.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
